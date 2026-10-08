@@ -8,11 +8,11 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
 
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-
-import kotlin.jvm.functions.Function2;
+import java.lang.reflect.Proxy;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -47,24 +47,53 @@ public final class EnableTextSelectionPatch {
     /**
      * Injection point. Builds the composable content passed to SelectionContainer.
      * The content calls the original rich text renderer with the original arguments.
+     *
+     * A dynamic proxy of the app's own kotlin Function2 is used (the app's Compose runtime
+     * checks its own, possibly renamed, function interface), so the extension does not need
+     * to reference any Kotlin type at compile time.
      */
     public static Object createRichTextContent(Class<?> owner, String methodName, Object[] args) {
-        return new RichTextContent(owner, methodName, args);
+        try {
+            ClassLoader loader = owner.getClassLoader();
+            Class<?> function2 = Class.forName("kotlin.jvm.functions.Function2", false, loader);
+            return Proxy.newProxyInstance(loader, new Class<?>[]{function2},
+                    new RichTextContentHandler(owner, methodName, args));
+        } catch (Exception ex) {
+            Logger.printException(() -> "createRichTextContent failure", ex);
+            throw new RuntimeException(ex);
+        }
     }
 
-    private static final class RichTextContent implements Function2<Object, Object, Object> {
+    private static final class RichTextContentHandler implements InvocationHandler {
         private final Class<?> owner;
         private final String methodName;
         private final Object[] args;
 
-        RichTextContent(Class<?> owner, String methodName, Object[] args) {
+        RichTextContentHandler(Class<?> owner, String methodName, Object[] args) {
             this.owner = owner;
             this.methodName = methodName;
             this.args = args;
         }
 
         @Override
-        public Object invoke(Object composer, Object changed) {
+        public Object invoke(Object proxy, Method method, Object[] methodArgs) {
+            if (method.getDeclaringClass() == Object.class) {
+                switch (method.getName()) {
+                    case "equals":
+                        return proxy == methodArgs[0];
+                    case "hashCode":
+                        return System.identityHashCode(proxy);
+                    default:
+                        return "MorpheRichTextContent";
+                }
+            }
+            if ("invoke".equals(method.getName()) && methodArgs != null && methodArgs.length == 2) {
+                return runOriginal(methodArgs[0]);
+            }
+            return null;
+        }
+
+        private Object runOriginal(Object composer) {
             Object[] callArgs = args.clone();
             // Trailing Integer arguments are the Compose $changed/$default flags,
             // the argument before them is the Composer.
