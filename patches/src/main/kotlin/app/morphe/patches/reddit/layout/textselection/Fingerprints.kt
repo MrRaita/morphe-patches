@@ -32,7 +32,7 @@ internal object RichTextViewSetItemsFingerprint : Fingerprint(
  * of its CompositionLocalProvider lambda, which survives R8 renaming.
  */
 internal object ComposeRichTextFingerprint : Fingerprint(
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     returnType = "V",
     filters = listOf(
         literal(1546229805L)
@@ -44,7 +44,7 @@ internal object ComposeRichTextFingerprint : Fingerprint(
  * Expected shape: (int changed, int default, Composer, Modifier, ComposableLambdaImpl) -> void.
  */
 internal object ComposeSelectionContainerFingerprint : Fingerprint(
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     returnType = "V",
     parameters = listOf("I", "I", "L", "L", "Landroidx/compose/runtime/internal/a;"),
     filters = listOf(
@@ -56,7 +56,7 @@ internal object ComposeSelectionContainerFingerprint : Fingerprint(
  * Compose runtime rememberComposableLambda(key, block, composer).
  */
 internal object ComposeComposableLambdaFingerprint : Fingerprint(
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     returnType = "Landroidx/compose/runtime/internal/a;",
     parameters = listOf("I", "L", "L"),
     filters = listOf(
