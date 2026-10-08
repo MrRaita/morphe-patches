@@ -59,7 +59,8 @@ Second \"item\" text"</string>
     <string name="morphe_remove_notification_dialog_title">Remove notification suggestion dialog</string>
     <string name="morphe_remove_notification_dialog_summary">Automatically dismisses the notification suggestion dialog when visiting a subreddit</string>
     <string name="morphe_enable_text_selection_title">Enable text selection</string>
-    <string name="morphe_enable_text_selection_summary">Allows selecting and copying text in comments and posts. Replaces the long press action on text</string>
+    <string name="morphe_enable_text_selection_summary">Allows selecting and copying text in opened posts and comments. Disables long press to collapse comments</string>
+    <string name="morphe_enable_text_selection_user_dialog_message">Long press to collapse comments will stop working while text selection is enabled.\n\nDo you want to continue?</string>
     <string name="morphe_show_view_count_title">Show view count on posts</string>
     <string name="morphe_show_view_count_summary">Limitation: Only available if the API response includes the view count</string>
     <string name="morphe_remove_nsfw_dialog_title">Remove NSFW warning dialog</string>

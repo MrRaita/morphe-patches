@@ -1,7 +1,3 @@
-// TASLAK - derlenmedi, test edilmedi.
-// Hedef: extensions/reddit/src/main/java/app/morphe/extension/reddit/patches/EnableTextSelectionPatch.java
-// Ayrica gerekli: Settings.java -> ENABLE_TEXT_SELECTION = new BooleanSetting("morphe_enable_text_selection", TRUE, true);
-//                 LayoutPreferenceCategory (+getSettingsStatus), strings.xml (title/summary).
 package app.morphe.extension.reddit.patches;
 
 import android.text.Layout;
@@ -11,6 +7,12 @@ import android.text.style.ClickableSpan;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+
+import kotlin.jvm.functions.Function2;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -23,9 +25,131 @@ public final class EnableTextSelectionPatch {
         return false;  // Modified during patching.
     }
 
+    // region Compose rich text (post body, comment body).
+
+    /** True while the original rich text composable is being invoked from the selection wrapper. */
+    private static final ThreadLocal<Boolean> IN_WRAPPER = new ThreadLocal<>();
+
     /**
-     * Injection point. RichTextView.setRichTextItems() cocuk View'i ekleyip c(View, boolean)
-     * kancasini cagirdiktan hemen sonra calisir.
+     * Injection point. Called at the start of the Compose rich text renderer.
+     *
+     * @return If the renderer should be re-invoked inside a SelectionContainer.
+     */
+    public static boolean shouldWrapRichText() {
+        try {
+            return Settings.ENABLE_TEXT_SELECTION.get() && IN_WRAPPER.get() == null;
+        } catch (Exception ex) {
+            Logger.printException(() -> "shouldWrapRichText failure", ex);
+            return false;
+        }
+    }
+
+    /**
+     * Injection point. Builds the composable content passed to SelectionContainer.
+     * The content calls the original rich text renderer with the original arguments.
+     */
+    public static Object createRichTextContent(Class<?> owner, String methodName, Object[] args) {
+        return new RichTextContent(owner, methodName, args);
+    }
+
+    private static final class RichTextContent implements Function2<Object, Object, Object> {
+        private final Class<?> owner;
+        private final String methodName;
+        private final Object[] args;
+
+        RichTextContent(Class<?> owner, String methodName, Object[] args) {
+            this.owner = owner;
+            this.methodName = methodName;
+            this.args = args;
+        }
+
+        @Override
+        public Object invoke(Object composer, Object changed) {
+            Object[] callArgs = args.clone();
+            // Trailing Integer arguments are the Compose $changed/$default flags,
+            // the argument before them is the Composer.
+            int composerIndex = callArgs.length - 1;
+            while (composerIndex >= 0 && callArgs[composerIndex] instanceof Integer) {
+                composerIndex--;
+            }
+            if (composerIndex < 0 || composerIndex + 1 >= callArgs.length) {
+                throw new IllegalStateException("Unexpected rich text arguments");
+            }
+            callArgs[composerIndex] = composer;
+            // Force the original composable to run (lowest bit of the first $changed).
+            callArgs[composerIndex + 1] = ((Integer) callArgs[composerIndex + 1]) | 1;
+
+            IN_WRAPPER.set(Boolean.TRUE);
+            try {
+                findMethod(owner, methodName, callArgs).invoke(null, callArgs);
+            } catch (InvocationTargetException ex) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                if (cause instanceof Error) throw (Error) cause;
+                throw new RuntimeException(cause);
+            } catch (Exception ex) {
+                Logger.printException(() -> "rich text selection wrapper failure", ex);
+                throw new RuntimeException(ex);
+            } finally {
+                IN_WRAPPER.remove();
+            }
+            return null;
+        }
+    }
+
+    private static Method cachedMethod;
+
+    private static synchronized Method findMethod(Class<?> owner, String name, Object[] args)
+            throws NoSuchMethodException {
+        if (cachedMethod != null) return cachedMethod;
+
+        for (Method method : owner.getDeclaredMethods()) {
+            if (!method.getName().equals(name)
+                    || !Modifier.isStatic(method.getModifiers())
+                    || method.getParameterTypes().length != args.length) {
+                continue;
+            }
+            Class<?>[] types = method.getParameterTypes();
+            boolean matches = true;
+            for (int i = 0; i < types.length; i++) {
+                Object arg = args[i];
+                Class<?> type = types[i];
+                if (type == boolean.class) {
+                    matches = arg instanceof Boolean;
+                } else if (type == int.class) {
+                    matches = arg instanceof Integer;
+                } else {
+                    matches = arg == null || type.isInstance(arg);
+                }
+                if (!matches) break;
+            }
+            if (matches) {
+                method.setAccessible(true);
+                cachedMethod = method;
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(owner.getName() + "." + name);
+    }
+
+    // endregion
+
+    // region Comment collapse.
+
+    /**
+     * Injection point. Comment collapse (long press) conflicts with text selection.
+     */
+    public static boolean shouldBlockCommentCollapse() {
+        return Settings.ENABLE_TEXT_SELECTION.get();
+    }
+
+    // endregion
+
+    // region Legacy View based rich text.
+
+    /**
+     * Injection point. RichTextView.setRichTextItems() calls this after adding a child view
+     * and running its c(View, boolean) hook.
      */
     public static void makeSelectable(View view) {
         try {
@@ -34,14 +158,11 @@ public final class EnableTextSelectionPatch {
             }
             TextView textView = (TextView) view;
 
-            // Reddit'in uzun basmayi ust View'a yonlendiren / dokunusu yutan dinleyicilerini kaldir.
-            // TODO: yorumlarda tek dokunus (thread daraltma vb.) davranisi bu dinleyicilere bagli,
-            //       dokunusu ust View'a iletmenin yolu cihazda dogrulanmali.
             textView.setOnTouchListener(null);
             textView.setOnLongClickListener(null);
 
             textView.setTextIsSelectable(true);
-            // setTextIsSelectable hareket yontemini ArrowKey'e cevirir; linkler icin geri al.
+            // setTextIsSelectable() replaces the movement method with ArrowKeyMovementMethod.
             textView.setMovementMethod(SelectableLinkMovementMethod.INSTANCE);
         } catch (Exception ex) {
             Logger.printException(() -> "makeSelectable failure", ex);
@@ -49,8 +170,8 @@ public final class EnableTextSelectionPatch {
     }
 
     /**
-     * LinkMovementMethod canSelectArbitrarily()=false dondurur; bu da TextView'de
-     * uzun basarak secimi engeller. Link tiklamasini koruyup secimi serbest birakir.
+     * LinkMovementMethod.canSelectArbitrarily() is false, which prevents long press
+     * selection in TextView. Keeps link clicks working while allowing selection.
      */
     private static final class SelectableLinkMovementMethod extends LinkMovementMethod {
         static final SelectableLinkMovementMethod INSTANCE = new SelectableLinkMovementMethod();
@@ -79,8 +200,9 @@ public final class EnableTextSelectionPatch {
                     }
                 }
             }
-            // Link degilse TextView'in kendi secim mantigina birak.
             return false;
         }
     }
+
+    // endregion
 }
