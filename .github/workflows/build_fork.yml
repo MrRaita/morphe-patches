@@ -1,0 +1,51 @@
+# Fork'ta deneme icin: .github/workflows/build_fork.yml olarak ekle.
+name: Build patches (fork test)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    name: Build .mpp
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle
+        uses: burrunan/gradle-cache-action@v3
+
+      # Morphe bagimliliklari GitHub Packages'tan geliyor (settings.gradle.kts).
+      # Varsayilan GITHUB_TOKEN yetmezse repo secret'i olarak GPR_TOKEN ekle
+      # (read:packages yetkili classic PAT).
+      - name: Check string resources
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew checkStringResources -PnoProguard --no-daemon
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: ./gradlew :patches:buildAndroid --no-daemon
+
+      - name: Upload .mpp
+        uses: actions/upload-artifact@v7
+        with:
+          name: patches-mpp
+          path: patches/build/libs/*.mpp
+          if-no-files-found: error
