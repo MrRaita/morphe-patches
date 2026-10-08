@@ -72,15 +72,14 @@ val enableTextSelectionPatch = bytecodePatch(
             paramTypes.forEachIndexed { index, type ->
                 appendLine("const/16 v1, $index")
                 when (type) {
+                    // Parameter registers are above v15, so range invokes are required.
                     "Z" -> {
-                        appendLine("move v2, p$index")
-                        appendLine("invoke-static { v2 }, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;")
+                        appendLine("invoke-static/range { p$index .. p$index }, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;")
                         appendLine("move-result-object v2")
                         appendLine("aput-object v2, v0, v1")
                     }
                     "I" -> {
-                        appendLine("move v2, p$index")
-                        appendLine("invoke-static { v2 }, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;")
+                        appendLine("invoke-static/range { p$index .. p$index }, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;")
                         appendLine("move-result-object v2")
                         appendLine("aput-object v2, v0, v1")
                     }
@@ -107,13 +106,13 @@ val enableTextSelectionPatch = bytecodePatch(
                 move-result-object v1
                 check-cast v1, $blockType
                 const v2, $WRAPPER_LAMBDA_KEY
-                move-object v3, $composerRegister
+                move-object/from16 v3, $composerRegister
                 invoke-static { v2, v1, v3 }, ${methodReference(lambdaMethod)}
                 move-result-object v1
 
                 const/16 v0, 48
                 const/4 v2, 0x1
-                move-object v3, $composerRegister
+                move-object/from16 v3, $composerRegister
                 const/4 v4, 0x0
                 invoke-static { v0, v2, v3, v4, v1 }, ${methodReference(selectionMethod)}
                 return-void
