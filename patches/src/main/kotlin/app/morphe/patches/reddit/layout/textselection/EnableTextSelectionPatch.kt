@@ -3,6 +3,7 @@ package app.morphe.patches.reddit.layout.textselection
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.removeInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
@@ -146,6 +147,31 @@ val enableTextSelectionPatch = bytecodePatch(
                     nop
                 """
             )
+        }
+
+        // endregion
+
+        // region Keep the selection when tapping the screen.
+
+        SelectionClearOnTapFingerprint.let {
+            it.method.apply {
+                val callIndex = it.instructionMatches.first().index
+                val blockRegister = getInstruction<FiveRegisterInstruction>(callIndex).registerC
+
+                // The only code after the call is loading and returning Unit, so v0 is free.
+                removeInstruction(callIndex)
+                addInstructionsWithLabels(
+                    callIndex,
+                    """
+                        invoke-static { }, $EXTENSION_CLASS->shouldKeepSelectionOnTap()Z
+                        move-result v0
+                        if-nez v0, :morphe_keep_selection
+                        invoke-interface { v$blockRegister }, Lkotlin/jvm/functions/Function0;->invoke()Ljava/lang/Object;
+                        :morphe_keep_selection
+                        nop
+                    """
+                )
+            }
         }
 
         // endregion

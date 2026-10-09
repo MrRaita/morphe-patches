@@ -172,6 +172,14 @@ public final class EnableTextSelectionPatch {
         return Settings.ENABLE_TEXT_SELECTION.get();
     }
 
+    /**
+     * Injection point. A tap on the screen normally clears the text selection,
+     * which also happens when trying to scroll slightly while the handles are visible.
+     */
+    public static boolean shouldKeepSelectionOnTap() {
+        return Settings.ENABLE_TEXT_SELECTION.get();
+    }
+
     // endregion
 
     // region Legacy View based rich text.

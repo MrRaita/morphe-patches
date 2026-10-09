@@ -75,3 +75,19 @@ internal object CommentClickEventHandlerFingerprint : Fingerprint(
         newInstance($$"Lcom/reddit/comments/events/handler/OnClickCommentEventHandler$handle$1;")
     )
 )
+
+/**
+ * Compose SelectionManager tap handler: a tap inside the selection container calls the
+ * clear selection block (SelectionManager.onRelease).
+ */
+internal object SelectionClearOnTapFingerprint : Fingerprint(
+    definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionManager$onClearSelectionRequested$1$1;",
+    name = "invokeSuspend",
+    filters = listOf(
+        methodCall(
+            opcode = Opcode.INVOKE_INTERFACE,
+            definingClass = "Lkotlin/jvm/functions/Function0;",
+            name = "invoke"
+        )
+    )
+)
