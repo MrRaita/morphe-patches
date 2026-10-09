@@ -65,12 +65,13 @@ internal object ComposeComposableLambdaFingerprint : Fingerprint(
 )
 
 /**
- * Compose comment tree event handler for collapsing a thread.
+ * Compose comment tree event handler for clicking a comment, which toggles
+ * the comment collapsed state (saveCollapsedState).
  */
-internal object CollapseThreadEventHandlerFingerprint : Fingerprint(
+internal object CommentClickEventHandlerFingerprint : Fingerprint(
     returnType = "Ljava/lang/Object;",
     parameters = listOf("L", "Lkotlin/coroutines/jvm/internal/ContinuationImpl;"),
     filters = listOf(
-        newInstance($$"Lcom/reddit/comments/events/handler/OnClickCollapseThreadEventHandler$handle$1;")
+        newInstance($$"Lcom/reddit/comments/events/handler/OnClickCommentEventHandler$handle$1;")
     )
 )

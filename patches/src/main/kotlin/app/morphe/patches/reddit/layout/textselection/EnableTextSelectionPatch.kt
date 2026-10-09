@@ -124,9 +124,9 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Disable comment collapsing (Compose comment tree).
+        // region Disable comment collapsing on click / long press (Compose comment tree).
 
-        CollapseThreadEventHandlerFingerprint.method.apply {
+        CommentClickEventHandlerFingerprint.method.apply {
             val unitField = implementation!!.instructions
                 .filterIsInstance<ReferenceInstruction>()
                 .firstOrNull {
