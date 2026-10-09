@@ -187,10 +187,35 @@ val enableTextSelectionPatch = bytecodePatch(
         try {
             SelectionReleaseFingerprint.method.addInstruction(
                 0,
-                "invoke-static { }, $EXTENSION_CLASS->onSelectionRelease()V"
+                "invoke-static { p0 }, $EXTENSION_CLASS->onSelectionRelease(Ljava/lang/Object;)V"
             )
         } catch (e: PatchException) {
-            // Diagnostics only.
+            // Diagnostics only, also tracks whether a selection exists.
+        }
+
+        // endregion
+
+        // region Keep the selection when Reddit clears focus on touch.
+
+        try {
+            SelectionChangedFingerprint.method.addInstruction(
+                0,
+                "invoke-static { p0, p1 }, $EXTENSION_CLASS->onSelectionChanged(Ljava/lang/Object;Ljava/lang/Object;)V"
+            )
+
+            FocusClearFingerprint.method.addInstructionsWithLabels(
+                0,
+                """
+                    invoke-static { }, $EXTENSION_CLASS->shouldBlockFocusClear()Z
+                    move-result v0
+                    if-eqz v0, :morphe_clear_focus
+                    return-void
+                    :morphe_clear_focus
+                    nop
+                """
+            )
+        } catch (e: PatchException) {
+            // Selection will be cleared when touching the screen.
         }
 
         // endregion

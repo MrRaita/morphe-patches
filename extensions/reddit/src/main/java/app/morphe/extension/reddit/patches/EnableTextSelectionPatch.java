@@ -21,8 +21,11 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -218,22 +221,69 @@ public final class EnableTextSelectionPatch {
         }
     }
 
+    /** SelectionManagers that currently have a selection. */
+    private static final Set<Object> SELECTION_MANAGERS_WITH_SELECTION =
+            Collections.newSetFromMap(new WeakHashMap<>());
+
     /**
      * Injection point. Called when the selection container clears its selection.
      */
-    public static void onSelectionRelease() {
+    public static void onSelectionRelease(Object selectionManager) {
         try {
+            SELECTION_MANAGERS_WITH_SELECTION.remove(selectionManager);
             if (!DEBUG_LOG || !Settings.ENABLE_TEXT_SELECTION.get()) return;
 
             StringBuilder builder = new StringBuilder("SELECTION RELEASED, callers:");
             StackTraceElement[] frames = new Throwable().getStackTrace();
-            for (int i = 1; i < frames.length; i++) {
+            for (int i = 1; i < frames.length && i <= 8; i++) {
                 builder.append("\n    at ").append(frames[i]);
             }
             debugLog(builder.toString());
         } catch (Exception ex) {
             Logger.printException(() -> "onSelectionRelease failure", ex);
         }
+    }
+
+    /**
+     * Injection point. Called when a selection container changes its selection.
+     */
+    public static void onSelectionChanged(Object selectionManager, Object selection) {
+        try {
+            if (selection == null) {
+                SELECTION_MANAGERS_WITH_SELECTION.remove(selectionManager);
+            } else {
+                SELECTION_MANAGERS_WITH_SELECTION.add(selectionManager);
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "onSelectionChanged failure", ex);
+        }
+    }
+
+    /**
+     * Injection point. Called at the start of FocusManager.clearFocus().
+     * Reddit's post detail screen clears focus on every touch down (to dismiss the keyboard),
+     * which makes the selection container lose focus and drop the selection before a scroll
+     * gesture can even start. While there is a selection, focus clears caused by touch input
+     * are ignored. A direct tap on the selected text still clears it.
+     *
+     * @return If clearing focus should be skipped.
+     */
+    public static boolean shouldBlockFocusClear() {
+        try {
+            if (SELECTION_MANAGERS_WITH_SELECTION.isEmpty() || !Settings.ENABLE_TEXT_SELECTION.get()) {
+                return false;
+            }
+
+            for (StackTraceElement frame : new Throwable().getStackTrace()) {
+                if ("dispatchTouchEvent".equals(frame.getMethodName())) {
+                    debugLog("blocked focus clear caused by touch input");
+                    return true;
+                }
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "shouldBlockFocusClear failure", ex);
+        }
+        return false;
     }
 
     // endregion

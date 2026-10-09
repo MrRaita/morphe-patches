@@ -140,3 +140,36 @@ internal object SelectionReleaseFingerprint : Fingerprint(
         )
     )
 )
+
+/**
+ * Compose SelectionManager.setSelection(selection): called whenever the selection changes.
+ */
+internal object SelectionChangedFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = listOf("L"),
+    custom = { _, classDef ->
+        classDef.type.startsWith("Landroidx/compose/foundation/text/selection/")
+    },
+    filters = listOf(
+        methodCall(name = "setValue"),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = listOf(), returnType = "V")
+    )
+)
+
+/**
+ * Compose FocusOwner.clearFocus(force): FocusManager.clearFocus() ends up here.
+ * Reddit's post detail screen calls it on every touch, which also clears the text selection.
+ */
+internal object FocusClearFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = listOf("Z"),
+    custom = { _, classDef ->
+        classDef.type.startsWith("Landroidx/compose/ui/focus/")
+    },
+    filters = listOf(
+        literal(8L),
+        methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = listOf("I", "Z", "Z"), returnType = "Z")
+    )
+)
