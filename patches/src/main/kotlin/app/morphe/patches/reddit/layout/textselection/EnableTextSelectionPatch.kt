@@ -1,5 +1,6 @@
 package app.morphe.patches.reddit.layout.textselection
 
+import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
@@ -177,6 +178,19 @@ val enableTextSelectionPatch = bytecodePatch(
                     """
                 )
             }
+        }
+
+        // endregion
+
+        // region Temporary diagnostics: report who clears the selection. Failing here is not fatal.
+
+        try {
+            SelectionReleaseFingerprint.method.addInstruction(
+                0,
+                "invoke-static { }, $EXTENSION_CLASS->onSelectionRelease()V"
+            )
+        } catch (e: PatchException) {
+            // Diagnostics only.
         }
 
         // endregion

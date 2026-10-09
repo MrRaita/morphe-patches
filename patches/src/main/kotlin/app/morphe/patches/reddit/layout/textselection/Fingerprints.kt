@@ -119,3 +119,24 @@ internal object PointersUpSlopDetectionFingerprint : Fingerprint(
         )
     )
 )
+
+/**
+ * Compose SelectionManager.onRelease(): clears the selection and hides the toolbar.
+ * Only used for temporary diagnostics.
+ */
+internal object SelectionReleaseFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = listOf(),
+    custom = { _, classDef ->
+        classDef.type.startsWith("Landroidx/compose/foundation/text/selection/")
+    },
+    filters = listOf(
+        methodCall(name = "setValue"),
+        methodCall(
+            opcode = Opcode.INVOKE_INTERFACE,
+            definingClass = "Lkotlin/jvm/functions/Function1;",
+            name = "invoke"
+        )
+    )
+)

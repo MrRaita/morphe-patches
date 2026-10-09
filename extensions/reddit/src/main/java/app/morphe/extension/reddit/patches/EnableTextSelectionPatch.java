@@ -16,6 +16,7 @@ import java.lang.reflect.Proxy;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
+import app.morphe.extension.shared.Utils;
 
 @SuppressWarnings("unused")
 public final class EnableTextSelectionPatch {
@@ -104,9 +105,9 @@ public final class EnableTextSelectionPatch {
             if (composerIndex < 0 || composerIndex + 1 >= callArgs.length) {
                 throw new IllegalStateException("Unexpected rich text arguments");
             }
+            // Keep $changed and $default untouched. Setting the lowest bit of $changed would make
+            // the composable skip applying its default parameter values (null style -> crash).
             callArgs[composerIndex] = composer;
-            // Force the original composable to run (lowest bit of the first $changed).
-            callArgs[composerIndex + 1] = ((Integer) callArgs[composerIndex + 1]) | 1;
 
             IN_WRAPPER.set(Boolean.TRUE);
             try {
@@ -170,6 +171,31 @@ public final class EnableTextSelectionPatch {
      */
     public static boolean shouldBlockCommentCollapse() {
         return Settings.ENABLE_TEXT_SELECTION.get();
+    }
+
+    /** Temporary diagnostics: shows who cleared the selection. */
+    private static final boolean DEBUG_SELECTION_RELEASE = true;
+
+    /**
+     * Injection point. Called when the selection container clears its selection.
+     */
+    public static void onSelectionRelease() {
+        try {
+            if (!DEBUG_SELECTION_RELEASE || !Settings.ENABLE_TEXT_SELECTION.get()) return;
+
+            StringBuilder builder = new StringBuilder("selection released by:");
+            StackTraceElement[] frames = new Throwable().getStackTrace();
+            int added = 0;
+            for (int i = 1; i < frames.length && added < 6; i++) {
+                String className = frames[i].getClassName();
+                if (className.startsWith("app.morphe.")) continue;
+                builder.append('\n').append(className).append('.').append(frames[i].getMethodName());
+                added++;
+            }
+            Utils.showToastLong(builder.toString());
+        } catch (Exception ex) {
+            Logger.printException(() -> "onSelectionRelease failure", ex);
+        }
     }
 
     /** Fraction of the normal touch slop used to tell a tap from a drag when clearing the selection. */
