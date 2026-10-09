@@ -3,7 +3,6 @@ package app.morphe.patches.reddit.layout.textselection
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
-import app.morphe.patcher.extensions.InstructionExtensions.removeInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
@@ -11,6 +10,7 @@ import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 
@@ -151,24 +151,29 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Keep the selection when tapping the screen.
+        // region Selection tap detection: a drag (even a small one) must not clear the selection.
 
-        SelectionClearOnTapFingerprint.let {
+        SelectionTapDetectionFingerprint.let {
+            it.method.addInstructions(
+                it.instructionMatches.first().index,
+                "invoke-static { }, $EXTENSION_CLASS->beginSelectionTapDetection()V"
+            )
+        }
+
+        PointersUpSlopDetectionFingerprint.let {
             it.method.apply {
                 val callIndex = it.instructionMatches.first().index
-                val blockRegister = getInstruction<FiveRegisterInstruction>(callIndex).registerC
+                val moveResult = getInstruction<OneRegisterInstruction>(callIndex + 1)
+                if (moveResult.opcode != Opcode.MOVE_RESULT) {
+                    throw PatchException("Unexpected instruction after touch slop call")
+                }
+                val slopRegister = moveResult.registerA
 
-                // The only code after the call is loading and returning Unit, so v0 is free.
-                removeInstruction(callIndex)
-                addInstructionsWithLabels(
-                    callIndex,
+                addInstructions(
+                    callIndex + 2,
                     """
-                        invoke-static { }, $EXTENSION_CLASS->shouldKeepSelectionOnTap()Z
-                        move-result v0
-                        if-nez v0, :morphe_keep_selection
-                        invoke-interface { v$blockRegister }, Lkotlin/jvm/functions/Function0;->invoke()Ljava/lang/Object;
-                        :morphe_keep_selection
-                        nop
+                        invoke-static/range { v$slopRegister .. v$slopRegister }, $EXTENSION_CLASS->adjustSelectionTapSlop(F)F
+                        move-result v$slopRegister
                     """
                 )
             }

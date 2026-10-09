@@ -77,17 +77,45 @@ internal object CommentClickEventHandlerFingerprint : Fingerprint(
 )
 
 /**
- * Compose SelectionManager tap handler: a tap inside the selection container calls the
- * clear selection block (SelectionManager.onRelease).
+ * Compose SelectionManager tap handler. A tap inside the selection container clears the selection
+ * unless the pointer moved more than the touch slop (a drag), which is detected by
+ * awaitAllPointersUpWithSlopDetection().
  */
-internal object SelectionClearOnTapFingerprint : Fingerprint(
+internal object SelectionTapDetectionFingerprint : Fingerprint(
     definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionManager$onClearSelectionRequested$1$1;",
     name = "invokeSuspend",
     filters = listOf(
         methodCall(
-            opcode = Opcode.INVOKE_INTERFACE,
-            definingClass = "Lkotlin/jvm/functions/Function0;",
-            name = "invoke"
+            opcode = Opcode.INVOKE_STATIC,
+            returnType = "Ljava/lang/Object;",
+            parameters = listOf(
+                "L",
+                "L",
+                "Landroidx/compose/ui/input/pointer/PointerEventPass;",
+                "Lkotlin/coroutines/jvm/internal/BaseContinuationImpl;"
+            )
+        )
+    )
+)
+
+/**
+ * awaitAllPointersUpWithSlopDetection(scope, down, pass): reads the touch slop through
+ * a static helper that returns a float.
+ */
+internal object PointersUpSlopDetectionFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    returnType = "Ljava/lang/Object;",
+    parameters = listOf(
+        "L",
+        "L",
+        "Landroidx/compose/ui/input/pointer/PointerEventPass;",
+        "Lkotlin/coroutines/jvm/internal/BaseContinuationImpl;"
+    ),
+    filters = listOf(
+        methodCall(
+            opcode = Opcode.INVOKE_STATIC,
+            returnType = "F",
+            parameters = listOf("L", "I")
         )
     )
 )

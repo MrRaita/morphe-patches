@@ -172,12 +172,33 @@ public final class EnableTextSelectionPatch {
         return Settings.ENABLE_TEXT_SELECTION.get();
     }
 
+    /** Fraction of the normal touch slop used to tell a tap from a drag when clearing the selection. */
+    private static final float SELECTION_TAP_SLOP_FACTOR = 0.3f;
+
+    /** Max time between begin and the slop read for them to belong together. */
+    private static final long SELECTION_TAP_WINDOW_NANOS = 100_000_000L;
+
+    private static long selectionTapDetectionStart;
+
     /**
-     * Injection point. A tap on the screen normally clears the text selection,
-     * which also happens when trying to scroll slightly while the handles are visible.
+     * Injection point. Called right before the selection container checks whether a touch
+     * was a tap (clears the selection) or a drag (keeps the selection).
      */
-    public static boolean shouldKeepSelectionOnTap() {
-        return Settings.ENABLE_TEXT_SELECTION.get();
+    public static void beginSelectionTapDetection() {
+        selectionTapDetectionStart = Settings.ENABLE_TEXT_SELECTION.get() ? System.nanoTime() : 0;
+    }
+
+    /**
+     * Injection point. Called with the touch slop used by the drag detection above.
+     * A smaller slop makes small drags count as drags, so only a direct tap clears the selection.
+     */
+    public static float adjustSelectionTapSlop(float slop) {
+        long start = selectionTapDetectionStart;
+        if (start == 0) return slop;
+
+        selectionTapDetectionStart = 0;
+        if (System.nanoTime() - start > SELECTION_TAP_WINDOW_NANOS) return slop;
+        return slop * SELECTION_TAP_SLOP_FACTOR;
     }
 
     // endregion
