@@ -1,5 +1,10 @@
 package app.morphe.extension.reddit.patches;
 
+import android.content.ContentValues;
+import android.content.Context;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.method.LinkMovementMethod;
@@ -8,11 +13,16 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
 
+import java.io.OutputStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -173,30 +183,60 @@ public final class EnableTextSelectionPatch {
         return Settings.ENABLE_TEXT_SELECTION.get();
     }
 
-    /** Temporary diagnostics: shows who cleared the selection. */
-    private static final boolean DEBUG_SELECTION_RELEASE = true;
+    // region Temporary diagnostics: writes a log file to Documents.
+
+    private static final boolean DEBUG_LOG = true;
+
+    private static OutputStream debugLogStream;
+    private static boolean debugLogFailed;
+
+    private static synchronized void debugLog(String message) {
+        if (!DEBUG_LOG || debugLogFailed) return;
+        try {
+            if (debugLogStream == null) {
+                Context context = Utils.getContext();
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME,
+                        "morphe_text_selection_debug_" + System.currentTimeMillis() + ".txt");
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS);
+                Uri uri = context.getContentResolver().insert(
+                        MediaStore.Files.getContentUri("external"), values);
+                if (uri == null) {
+                    debugLogFailed = true;
+                    return;
+                }
+                debugLogStream = context.getContentResolver().openOutputStream(uri, "wa");
+            }
+            String line = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(new Date())
+                    + " " + message + "\n";
+            debugLogStream.write(line.getBytes(StandardCharsets.UTF_8));
+            debugLogStream.flush();
+        } catch (Exception ex) {
+            debugLogFailed = true;
+            Logger.printException(() -> "debugLog failure", ex);
+        }
+    }
 
     /**
      * Injection point. Called when the selection container clears its selection.
      */
     public static void onSelectionRelease() {
         try {
-            if (!DEBUG_SELECTION_RELEASE || !Settings.ENABLE_TEXT_SELECTION.get()) return;
+            if (!DEBUG_LOG || !Settings.ENABLE_TEXT_SELECTION.get()) return;
 
-            StringBuilder builder = new StringBuilder("selection released by:");
+            StringBuilder builder = new StringBuilder("SELECTION RELEASED, callers:");
             StackTraceElement[] frames = new Throwable().getStackTrace();
-            int added = 0;
-            for (int i = 1; i < frames.length && added < 6; i++) {
-                String className = frames[i].getClassName();
-                if (className.startsWith("app.morphe.")) continue;
-                builder.append('\n').append(className).append('.').append(frames[i].getMethodName());
-                added++;
+            for (int i = 1; i < frames.length; i++) {
+                builder.append("\n    at ").append(frames[i]);
             }
-            Utils.showToastLong(builder.toString());
+            debugLog(builder.toString());
         } catch (Exception ex) {
             Logger.printException(() -> "onSelectionRelease failure", ex);
         }
     }
+
+    // endregion
 
     /** Fraction of the normal touch slop used to tell a tap from a drag when clearing the selection. */
     private static final float SELECTION_TAP_SLOP_FACTOR = 0.3f;
@@ -212,6 +252,7 @@ public final class EnableTextSelectionPatch {
      */
     public static void beginSelectionTapDetection() {
         selectionTapDetectionStart = Settings.ENABLE_TEXT_SELECTION.get() ? System.nanoTime() : 0;
+        if (selectionTapDetectionStart != 0) debugLog("tap detection started (finger down)");
     }
 
     /**
@@ -223,7 +264,11 @@ public final class EnableTextSelectionPatch {
         if (start == 0) return slop;
 
         selectionTapDetectionStart = 0;
-        if (System.nanoTime() - start > SELECTION_TAP_WINDOW_NANOS) return slop;
+        if (System.nanoTime() - start > SELECTION_TAP_WINDOW_NANOS) {
+            debugLog("tap detection: slop read too late, unchanged " + slop);
+            return slop;
+        }
+        debugLog("tap detection: slop " + slop + " -> " + (slop * SELECTION_TAP_SLOP_FACTOR));
         return slop * SELECTION_TAP_SLOP_FACTOR;
     }
 
