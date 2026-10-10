@@ -38,8 +38,8 @@ public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
     @Override
     public boolean getSettingsStatus() {
         return DisableModernHomePatch.isPatchIncluded() ||
-                EnableTextSelectionPatch.isPatchIncluded() ||
                 DisableScreenshotPopupPatch.isPatchIncluded() ||
+                EnableTextSelectionPatch.isPatchIncluded() ||
                 CustomFontPatch.isPatchIncluded() ||
                 ForceSystemFontPatch.isPatchIncluded() ||
                 HideAskButtonPatch.isPatchIncluded() ||
@@ -69,6 +69,13 @@ public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
             addPreference(new BooleanSettingPreference(
                     context,
                     Settings.DISABLE_SCREENSHOT_POPUP
+            ));
+        }
+
+        if (EnableTextSelectionPatch.isPatchIncluded()) {
+            addPreference(new BooleanSettingPreference(
+                    context,
+                    Settings.ENABLE_TEXT_SELECTION
             ));
         }
 
@@ -105,13 +112,6 @@ public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
             addPreference(new BooleanSettingPreference(
                     context,
                     Settings.REMOVE_NOTIFICATION_DIALOG
-            ));
-        }
-
-        if (EnableTextSelectionPatch.isPatchIncluded()) {
-            addPreference(new BooleanSettingPreference(
-                    context,
-                    Settings.ENABLE_TEXT_SELECTION
             ));
         }
 

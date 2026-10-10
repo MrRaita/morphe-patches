@@ -7,29 +7,10 @@ import app.morphe.patcher.newInstance
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 
-/**
- * Legacy (View based) rich text: com.reddit.richtext.RichTextView.setRichTextItems(List).
- * After each child view is added the empty hook c(View, boolean) is called. Comment subclasses
- * install their gesture listeners in that hook, so injection must happen after the call.
- */
-internal object RichTextViewSetItemsFingerprint : Fingerprint(
-    definingClass = "Lcom/reddit/richtext/RichTextView;",
-    returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
-    parameters = listOf("Ljava/util/List;"),
-    filters = listOf(
-        methodCall(
-            opcode = Opcode.INVOKE_VIRTUAL,
-            definingClass = "Lcom/reddit/richtext/RichTextView;",
-            parameters = listOf("Landroid/view/View;", "Z"),
-            returnType = "V"
-        )
-    )
-)
+// Compose group keys are used as anchors where possible, they survive R8 renaming.
 
 /**
- * Compose rich text renderer (post body and comment body). Matched by the Compose group key
- * of its CompositionLocalProvider lambda, which survives R8 renaming.
+ * Compose rich text renderer, used for post and comment bodies.
  */
 internal object ComposeRichTextFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
@@ -40,8 +21,8 @@ internal object ComposeRichTextFingerprint : Fingerprint(
 )
 
 /**
- * Compose foundation SelectionContainer(modifier, content), matched by its restart group key.
- * Expected shape: (int changed, int default, Composer, Modifier, ComposableLambdaImpl) -> void.
+ * Compose foundation SelectionContainer(modifier, content).
+ * Shape: (int changed, int default, Composer, Modifier, ComposableLambdaImpl) -> void.
  */
 internal object ComposeSelectionContainerFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
@@ -65,8 +46,7 @@ internal object ComposeComposableLambdaFingerprint : Fingerprint(
 )
 
 /**
- * Compose comment tree event handler for clicking a comment, which toggles
- * the comment collapsed state (saveCollapsedState).
+ * Comment click event handler. Clicking a comment collapses or expands it.
  */
 internal object CommentClickEventHandlerFingerprint : Fingerprint(
     returnType = "Ljava/lang/Object;",
@@ -77,9 +57,8 @@ internal object CommentClickEventHandlerFingerprint : Fingerprint(
 )
 
 /**
- * Compose SelectionManager tap handler. A tap inside the selection container clears the selection
- * unless the pointer moved more than the touch slop (a drag), which is detected by
- * awaitAllPointersUpWithSlopDetection().
+ * Selection container tap handler. A touch that does not move more than the touch slop
+ * is a tap, which clears the selection.
  */
 internal object SelectionTapDetectionFingerprint : Fingerprint(
     definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionManager$onClearSelectionRequested$1$1;",
@@ -99,8 +78,8 @@ internal object SelectionTapDetectionFingerprint : Fingerprint(
 )
 
 /**
- * awaitAllPointersUpWithSlopDetection(scope, down, pass): reads the touch slop through
- * a static helper that returns a float.
+ * awaitAllPointersUpWithSlopDetection(scope, down, pass). Reads the touch slop
+ * through a static helper that returns a float.
  */
 internal object PointersUpSlopDetectionFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
@@ -121,8 +100,7 @@ internal object PointersUpSlopDetectionFingerprint : Fingerprint(
 )
 
 /**
- * Compose SelectionManager.onRelease(): clears the selection and hides the toolbar.
- * Only used for temporary diagnostics.
+ * SelectionManager.onRelease(): clears the selection and hides the toolbar.
  */
 internal object SelectionReleaseFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
@@ -142,7 +120,7 @@ internal object SelectionReleaseFingerprint : Fingerprint(
 )
 
 /**
- * Compose SelectionManager.setSelection(selection): called whenever the selection changes.
+ * SelectionManager.setSelection(selection).
  */
 internal object SelectionChangedFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
@@ -158,8 +136,8 @@ internal object SelectionChangedFingerprint : Fingerprint(
 )
 
 /**
- * Compose FocusOwner.clearFocus(force): FocusManager.clearFocus() ends up here.
- * Reddit's post detail screen calls it on every touch, which also clears the text selection.
+ * FocusOwner.clearFocus(force). Reddit's post detail screen clears focus on every touch,
+ * which also clears the text selection.
  */
 internal object FocusClearFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
@@ -175,7 +153,7 @@ internal object FocusClearFingerprint : Fingerprint(
 )
 
 /**
- * AndroidComposeView.dispatchTouchEvent(MotionEvent): sees every touch that enters Compose.
+ * AndroidComposeView.dispatchTouchEvent(MotionEvent): every touch that enters Compose.
  */
 internal object ComposeDispatchTouchEventFingerprint : Fingerprint(
     name = "dispatchTouchEvent",

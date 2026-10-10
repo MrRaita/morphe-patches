@@ -6,11 +6,11 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLa
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
@@ -19,76 +19,61 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/EnableTextSelectionPatch;"
 
-// Arbitrary Compose group key for the wrapper lambda.
-private const val WRAPPER_LAMBDA_KEY = 0x4D4F5250
+// Arbitrary Compose group key of the lambda passed to SelectionContainer.
+private const val SELECTION_CONTENT_LAMBDA_KEY = 0x4D4F5250
+
+private fun MutableMethod.smaliReference() =
+    "$definingClass->$name(${parameterTypes.joinToString("")})$returnType"
 
 @Suppress("unused")
 val enableTextSelectionPatch = bytecodePatch(
     name = "Enable text selection",
     description = "Adds an option to make post and comment text selectable and copyable. " +
-        "Disables comment collapsing."
+        "Disables collapsing comments."
 ) {
     compatibleWith(COMPATIBILITY_REDDIT)
 
     dependsOn(settingsPatch)
 
     execute {
-        // region Legacy View based rich text.
+        // region Wrap the rich text renderer in a SelectionContainer.
 
-        RichTextViewSetItemsFingerprint.let {
-            it.method.apply {
-                val callIndex = it.instructionMatches.first().index
-                // invoke-virtual { this, view, flag }, RichTextView->c(View;Z)V
-                val viewRegister = getInstruction<FiveRegisterInstruction>(callIndex).registerD
-
-                addInstructions(
-                    callIndex + 1,
-                    "invoke-static { v$viewRegister }, $EXTENSION_CLASS->makeSelectable(Landroid/view/View;)V"
-                )
-            }
-        }
-
-        // endregion
-
-        // region Compose rich text: wrap the renderer in SelectionContainer.
-
-        val lambdaMethod = ComposeComposableLambdaFingerprint.method
-        val selectionMethod = ComposeSelectionContainerFingerprint.method
         val richTextMethod = ComposeRichTextFingerprint.method
-
-        fun methodReference(method: app.morphe.patcher.util.proxy.mutableTypes.MutableMethod) =
-            "${method.definingClass}->${method.name}(" +
-                method.parameterTypes.joinToString("") + ")${method.returnType}"
-
         val paramTypes = richTextMethod.parameterTypes.map { it.toString() }
-        // Trailing int parameters are the Compose $changed/$default flags, the parameter
-        // before them is the Composer.
+
+        // The trailing int parameters are the Compose $changed/$default flags and the
+        // parameter before them is the Composer.
         val composerIndex = paramTypes.indexOfLast { it != "I" }
         if (composerIndex < 0 || composerIndex == paramTypes.size - 1) {
             throw PatchException("Unexpected Compose rich text signature: $paramTypes")
         }
         val composerRegister = "p$composerIndex"
-        val lambdaParamTypes = lambdaMethod.parameterTypes.map { it.toString() }
-        val blockType = lambdaParamTypes[1]
 
+        val composableLambdaMethod = ComposeComposableLambdaFingerprint.method
+        val blockType = composableLambdaMethod.parameterTypes[1]
+        val selectionContainerMethod = ComposeSelectionContainerFingerprint.method
+
+        // Parameter registers are above v15, which is why range invokes and
+        // move-object/from16 are used.
         val packArguments = buildString {
             paramTypes.forEachIndexed { index, type ->
                 appendLine("const/16 v1, $index")
                 when (type) {
-                    // Parameter registers are above v15, so range invokes are required.
-                    "Z" -> {
-                        appendLine("invoke-static/range { p$index .. p$index }, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;")
-                        appendLine("move-result-object v2")
-                        appendLine("aput-object v2, v0, v1")
-                    }
-                    "I" -> {
-                        appendLine("invoke-static/range { p$index .. p$index }, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;")
-                        appendLine("move-result-object v2")
-                        appendLine("aput-object v2, v0, v1")
-                    }
+                    "Z" -> appendLine(
+                        "invoke-static/range { p$index .. p$index }, " +
+                            "Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;"
+                    )
+                    "I" -> appendLine(
+                        "invoke-static/range { p$index .. p$index }, " +
+                            "Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;"
+                    )
                     "J", "D", "F", "B", "S", "C" ->
                         throw PatchException("Unsupported primitive parameter type: $type")
                     else -> appendLine("aput-object p$index, v0, v1")
+                }
+                if (type == "Z" || type == "I") {
+                    appendLine("move-result-object v2")
+                    appendLine("aput-object v2, v0, v1")
                 }
             }
         }
@@ -108,16 +93,16 @@ val enableTextSelectionPatch = bytecodePatch(
                 invoke-static { v1, v2, v0 }, $EXTENSION_CLASS->createRichTextContent(Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;
                 move-result-object v1
                 check-cast v1, $blockType
-                const v2, $WRAPPER_LAMBDA_KEY
+                const v2, $SELECTION_CONTENT_LAMBDA_KEY
                 move-object/from16 v3, $composerRegister
-                invoke-static { v2, v1, v3 }, ${methodReference(lambdaMethod)}
+                invoke-static { v2, v1, v3 }, ${composableLambdaMethod.smaliReference()}
                 move-result-object v1
 
                 const/16 v0, 48
                 const/4 v2, 0x1
                 move-object/from16 v3, $composerRegister
                 const/4 v4, 0x0
-                invoke-static { v0, v2, v3, v4, v1 }, ${methodReference(selectionMethod)}
+                invoke-static { v0, v2, v3, v4, v1 }, ${selectionContainerMethod.smaliReference()}
                 return-void
 
                 :morphe_original
@@ -127,21 +112,22 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Disable collapsing comments (Compose comment tree). Expanding stays possible.
+        // region Disable collapsing comments, expanding a collapsed comment keeps working.
 
         CommentClickEventHandlerFingerprint.method.apply {
             val instructions = implementation!!.instructions
 
-            // Find: invoke-virtual { comment }, Comment->getCollapsed()Z
-            //       move-result vX
-            //       if-eqz vX, :collapse_branch
+            // Find the branch that collapses an expanded comment:
+            //   invoke-virtual { comment }, Comment->getCollapsed()Z
+            //   move-result vX
+            //   if-eqz vX, :collapse
             var branchIndex = -1
             var collapsedRegister = -1
             for (i in 0 until instructions.size - 3) {
                 val call = instructions[i]
                 if (call.opcode != Opcode.INVOKE_VIRTUAL) continue
-                val reference = (call as? ReferenceInstruction)?.reference as? MethodReference ?: continue
-                if (reference.name != "getCollapsed") continue
+                val reference = (call as? ReferenceInstruction)?.reference as? MethodReference
+                if (reference?.name != "getCollapsed") continue
 
                 val result = instructions[i + 1]
                 if (result.opcode != Opcode.MOVE_RESULT) continue
@@ -161,27 +147,27 @@ val enableTextSelectionPatch = bytecodePatch(
             }
             if (branchIndex < 0) throw PatchException("Could not find comment collapsed check")
 
-            val unitField = instructions
+            val unitInstance = instructions
                 .filterIsInstance<ReferenceInstruction>()
                 .firstOrNull {
                     it.opcode == Opcode.SGET_OBJECT &&
                         (it.reference as? FieldReference)?.definingClass == "Lkotlin/Unit;"
                 }?.reference ?: throw PatchException("Could not find Unit instance field")
 
-            // The register is zero (comment not collapsed) when the original branch is taken
-            // to collapse it. Skip that only, expanding a collapsed comment keeps working.
+            // The register is zero when the comment is expanded, the next instruction then
+            // collapses it. Return early instead, but only if the setting is on.
             addInstructionsWithLabels(
                 branchIndex,
                 """
-                    if-nez v$collapsedRegister, :morphe_comment_is_collapsed
+                    if-nez v$collapsedRegister, :morphe_comment_collapsed
                     invoke-static { }, $EXTENSION_CLASS->shouldBlockCommentCollapse()Z
                     move-result v$collapsedRegister
                     if-eqz v$collapsedRegister, :morphe_comment_collapse_allowed
-                    sget-object v$collapsedRegister, $unitField
+                    sget-object v$collapsedRegister, $unitInstance
                     return-object v$collapsedRegister
                     :morphe_comment_collapse_allowed
                     const/16 v$collapsedRegister, 0x0
-                    :morphe_comment_is_collapsed
+                    :morphe_comment_collapsed
                     nop
                 """
             )
@@ -189,10 +175,10 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Selection tap detection: a drag (even a small one) must not clear the selection.
+        // region A slight drag must not be treated as a tap that clears the selection.
 
         SelectionTapDetectionFingerprint.let {
-            it.method.addInstructions(
+            it.method.addInstruction(
                 it.instructionMatches.first().index,
                 "invoke-static { }, $EXTENSION_CLASS->beginSelectionTapDetection()V"
             )
@@ -219,56 +205,39 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Temporary diagnostics: report who clears the selection. Failing here is not fatal.
+        // region Keep the selection while touching and scrolling, a tap clears it.
 
-        try {
-            SelectionReleaseFingerprint.method.addInstruction(
-                0,
-                "invoke-static { p0 }, $EXTENSION_CLASS->onSelectionRelease(Ljava/lang/Object;)V"
-            )
-        } catch (e: PatchException) {
-            // Diagnostics only, also tracks whether a selection exists.
-        }
+        val releaseMethod = SelectionReleaseFingerprint.method
+        releaseMethod.addInstruction(
+            0,
+            "invoke-static { p0 }, $EXTENSION_CLASS->onSelectionRelease(Ljava/lang/Object;)V"
+        )
 
-        // endregion
+        // The extension clears selections by calling the release method.
+        SelectionChangedFingerprint.method.addInstructions(
+            0,
+            """
+                const-string v0, "${releaseMethod.name}"
+                invoke-static { p0, p1, v0 }, $EXTENSION_CLASS->onSelectionChanged(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V
+            """
+        )
 
-        // region Keep the selection when Reddit clears focus on touch.
+        ComposeDispatchTouchEventFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->onComposeTouchEvent(Landroid/view/MotionEvent;)V"
+        )
 
-        try {
-            // The selection can be cleared from the extension by calling this method.
-            val releaseMethodName = SelectionReleaseFingerprint.method.name
-
-            SelectionChangedFingerprint.method.addInstructions(
-                0,
-                """
-                    const-string v0, "$releaseMethodName"
-                    invoke-static { p0, p1, v0 }, $EXTENSION_CLASS->onSelectionChanged(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V
-                """
-            )
-
-            try {
-                ComposeDispatchTouchEventFingerprint.method.addInstruction(
-                    0,
-                    "invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->onComposeTouchEvent(Landroid/view/MotionEvent;)V"
-                )
-            } catch (e: PatchException) {
-                // A tap outside the selection container will not clear the selection.
-            }
-
-            FocusClearFingerprint.method.addInstructionsWithLabels(
-                0,
-                """
-                    invoke-static { }, $EXTENSION_CLASS->shouldBlockFocusClear()Z
-                    move-result v0
-                    if-eqz v0, :morphe_clear_focus
-                    return-void
-                    :morphe_clear_focus
-                    nop
-                """
-            )
-        } catch (e: PatchException) {
-            // Selection will be cleared when touching the screen.
-        }
+        FocusClearFingerprint.method.addInstructionsWithLabels(
+            0,
+            """
+                invoke-static { }, $EXTENSION_CLASS->shouldBlockFocusClear()Z
+                move-result v0
+                if-eqz v0, :morphe_clear_focus
+                return-void
+                :morphe_clear_focus
+                nop
+            """
+        )
 
         // endregion
 
