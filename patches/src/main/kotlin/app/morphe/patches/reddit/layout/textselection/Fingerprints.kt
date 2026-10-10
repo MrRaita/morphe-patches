@@ -173,3 +173,15 @@ internal object FocusClearFingerprint : Fingerprint(
         methodCall(opcode = Opcode.INVOKE_VIRTUAL, parameters = listOf("I", "Z", "Z"), returnType = "Z")
     )
 )
+
+/**
+ * AndroidComposeView.dispatchTouchEvent(MotionEvent): sees every touch that enters Compose.
+ */
+internal object ComposeDispatchTouchEventFingerprint : Fingerprint(
+    name = "dispatchTouchEvent",
+    returnType = "Z",
+    parameters = listOf("Landroid/view/MotionEvent;"),
+    custom = { _, classDef ->
+        classDef.type.startsWith("Landroidx/compose/ui/platform/")
+    }
+)

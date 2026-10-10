@@ -14,6 +14,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/EnableTextSelectionPatch;"
@@ -126,25 +127,61 @@ val enableTextSelectionPatch = bytecodePatch(
 
         // endregion
 
-        // region Disable comment collapsing on click / long press (Compose comment tree).
+        // region Disable collapsing comments (Compose comment tree). Expanding stays possible.
 
         CommentClickEventHandlerFingerprint.method.apply {
-            val unitField = implementation!!.instructions
+            val instructions = implementation!!.instructions
+
+            // Find: invoke-virtual { comment }, Comment->getCollapsed()Z
+            //       move-result vX
+            //       if-eqz vX, :collapse_branch
+            var branchIndex = -1
+            var collapsedRegister = -1
+            for (i in 0 until instructions.size - 3) {
+                val call = instructions[i]
+                if (call.opcode != Opcode.INVOKE_VIRTUAL) continue
+                val reference = (call as? ReferenceInstruction)?.reference as? MethodReference ?: continue
+                if (reference.name != "getCollapsed") continue
+
+                val result = instructions[i + 1]
+                if (result.opcode != Opcode.MOVE_RESULT) continue
+                val register = (result as OneRegisterInstruction).registerA
+
+                for (j in i + 2..i + 3) {
+                    val branch = instructions[j]
+                    if (branch.opcode == Opcode.IF_EQZ &&
+                        (branch as OneRegisterInstruction).registerA == register
+                    ) {
+                        branchIndex = j
+                        collapsedRegister = register
+                        break
+                    }
+                }
+                if (branchIndex >= 0) break
+            }
+            if (branchIndex < 0) throw PatchException("Could not find comment collapsed check")
+
+            val unitField = instructions
                 .filterIsInstance<ReferenceInstruction>()
                 .firstOrNull {
                     it.opcode == Opcode.SGET_OBJECT &&
                         (it.reference as? FieldReference)?.definingClass == "Lkotlin/Unit;"
                 }?.reference ?: throw PatchException("Could not find Unit instance field")
 
+            // The register is zero (comment not collapsed) when the original branch is taken
+            // to collapse it. Skip that only, expanding a collapsed comment keeps working.
             addInstructionsWithLabels(
-                0,
+                branchIndex,
                 """
+                    if-nez v$collapsedRegister, :morphe_comment_is_collapsed
                     invoke-static { }, $EXTENSION_CLASS->shouldBlockCommentCollapse()Z
-                    move-result v0
-                    if-eqz v0, :morphe_collapse_original
-                    sget-object v0, $unitField
-                    return-object v0
-                    :morphe_collapse_original
+                    move-result v$collapsedRegister
+                    if-eqz v$collapsedRegister, :morphe_comment_collapse_allowed
+                    sget-object v$collapsedRegister, $unitField
+                    return-object v$collapsedRegister
+                    :morphe_comment_collapse_allowed
+                    const/16 v$collapsedRegister, 0x0
+                    :morphe_comment_is_collapsed
                     nop
                 """
             )
@@ -198,10 +235,25 @@ val enableTextSelectionPatch = bytecodePatch(
         // region Keep the selection when Reddit clears focus on touch.
 
         try {
-            SelectionChangedFingerprint.method.addInstruction(
+            // The selection can be cleared from the extension by calling this method.
+            val releaseMethodName = SelectionReleaseFingerprint.method.name
+
+            SelectionChangedFingerprint.method.addInstructions(
                 0,
-                "invoke-static { p0, p1 }, $EXTENSION_CLASS->onSelectionChanged(Ljava/lang/Object;Ljava/lang/Object;)V"
+                """
+                    const-string v0, "$releaseMethodName"
+                    invoke-static { p0, p1, v0 }, $EXTENSION_CLASS->onSelectionChanged(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V
+                """
             )
+
+            try {
+                ComposeDispatchTouchEventFingerprint.method.addInstruction(
+                    0,
+                    "invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->onComposeTouchEvent(Landroid/view/MotionEvent;)V"
+                )
+            } catch (e: PatchException) {
+                // A tap outside the selection container will not clear the selection.
+            }
 
             FocusClearFingerprint.method.addInstructionsWithLabels(
                 0,

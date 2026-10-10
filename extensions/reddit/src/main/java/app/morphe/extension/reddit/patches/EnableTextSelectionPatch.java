@@ -10,6 +10,7 @@ import android.text.Spannable;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.View;
 import android.widget.TextView;
 
@@ -21,6 +22,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
@@ -244,11 +246,15 @@ public final class EnableTextSelectionPatch {
         }
     }
 
+    /** Name of SelectionManager.onRelease(), set during patching. */
+    private static String selectionReleaseMethodName;
+
     /**
      * Injection point. Called when a selection container changes its selection.
      */
-    public static void onSelectionChanged(Object selectionManager, Object selection) {
+    public static void onSelectionChanged(Object selectionManager, Object selection, String releaseMethodName) {
         try {
+            selectionReleaseMethodName = releaseMethodName;
             if (selection == null) {
                 SELECTION_MANAGERS_WITH_SELECTION.remove(selectionManager);
             } else {
@@ -257,6 +263,65 @@ public final class EnableTextSelectionPatch {
         } catch (Exception ex) {
             Logger.printException(() -> "onSelectionChanged failure", ex);
         }
+    }
+
+    private static float tapDownX;
+    private static float tapDownY;
+    private static long tapDownTime;
+    private static boolean tapCandidate;
+
+    /**
+     * Injection point. Called with every touch event that enters Compose.
+     * Because focus clears caused by touch are ignored while there is a selection,
+     * a plain tap anywhere on the screen clears the selection here instead.
+     * Dragging (scrolling, moving selection handles) and long presses keep the selection.
+     */
+    public static void onComposeTouchEvent(MotionEvent event) {
+        try {
+            if (!Settings.ENABLE_TEXT_SELECTION.get()) return;
+
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    tapCandidate = !SELECTION_MANAGERS_WITH_SELECTION.isEmpty();
+                    tapDownX = event.getRawX();
+                    tapDownY = event.getRawY();
+                    tapDownTime = event.getEventTime();
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (tapCandidate) {
+                        float slop = ViewConfiguration.get(Utils.getContext()).getScaledTouchSlop()
+                                * SELECTION_TAP_SLOP_FACTOR;
+                        if (Math.abs(event.getRawX() - tapDownX) > slop
+                                || Math.abs(event.getRawY() - tapDownY) > slop) {
+                            tapCandidate = false;
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                    if (tapCandidate
+                            && event.getEventTime() - tapDownTime < ViewConfiguration.getLongPressTimeout()) {
+                        releaseAllSelections();
+                    }
+                    tapCandidate = false;
+                    break;
+                default: // Cancel, second finger and so on.
+                    tapCandidate = false;
+                    break;
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "onComposeTouchEvent failure", ex);
+        }
+    }
+
+    private static void releaseAllSelections() throws Exception {
+        if (selectionReleaseMethodName == null) return;
+
+        for (Object manager : new ArrayList<>(SELECTION_MANAGERS_WITH_SELECTION)) {
+            Method release = manager.getClass().getDeclaredMethod(selectionReleaseMethodName);
+            release.setAccessible(true);
+            release.invoke(manager);
+        }
+        debugLog("tap outside: selection released");
     }
 
     /**
