@@ -23,11 +23,33 @@ internal object ComposeRichTextFingerprint : Fingerprint(
 )
 
 /**
+ * Compose text of the media viewer (swipe mode) that shows the expanded title and body.
+ */
+internal object ComposeExpandedTextFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    returnType = "V",
+    filters = listOf(
+        literal(1084279538L)
+    )
+)
+
+/**
  * Extension method that invokes the rich text renderer.
  */
 internal object InvokeRichTextFingerprint : Fingerprint(
     definingClass = EXTENSION_CLASS,
     name = "invokeRichText",
+    accessFlags = listOf(AccessFlags.PRIVATE, AccessFlags.STATIC),
+    returnType = "V",
+    parameters = listOf("[Ljava/lang/Object;", "Ljava/lang/Object;")
+)
+
+/**
+ * Extension method that invokes the media viewer expanded text.
+ */
+internal object InvokeExpandedTextFingerprint : Fingerprint(
+    definingClass = EXTENSION_CLASS,
+    name = "invokeExpandedText",
     accessFlags = listOf(AccessFlags.PRIVATE, AccessFlags.STATIC),
     returnType = "V",
     parameters = listOf("[Ljava/lang/Object;", "Ljava/lang/Object;")

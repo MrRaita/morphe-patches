@@ -113,6 +113,69 @@ public final class CopyTextPatch {
 
     // endregion
 
+    // region Wrap the media viewer expanded text in a SelectionContainer.
+
+    /**
+     * Set while the original expanded text is invoked from inside the SelectionContainer.
+     */
+    private static final ThreadLocal<Boolean> IN_EXPANDED_TEXT_SELECTION_CONTAINER = new ThreadLocal<>();
+
+    /**
+     * Injection point. Called at the start of the media viewer expanded title and body text.
+     *
+     * @return If the text should be invoked inside a SelectionContainer instead.
+     */
+    public static boolean shouldWrapExpandedText() {
+        try {
+            return Settings.COPY_TEXT.get() && IN_EXPANDED_TEXT_SELECTION_CONTAINER.get() == null;
+        } catch (Exception ex) {
+            Logger.printException(() -> "shouldWrapExpandedText failure", ex);
+            return false;
+        }
+    }
+
+    /**
+     * Injection point. Creates the content of the SelectionContainer, which invokes the original
+     * expanded text with the original arguments.
+     */
+    public static Object createExpandedTextContent(Object[] args) {
+        return new ExpandedTextContent(args);
+    }
+
+    /**
+     * Content lambda of the SelectionContainer. Implements the Compose Function2 interface,
+     * the interface and its invoke(composer, changed) bridge method are added during patching.
+     */
+    public static final class ExpandedTextContent {
+        private final Object[] args;
+
+        ExpandedTextContent(Object[] args) {
+            this.args = args;
+        }
+
+        /**
+         * Called by the invoke(composer, changed) bridge method.
+         */
+        public void render(Object composer) {
+            IN_EXPANDED_TEXT_SELECTION_CONTAINER.set(Boolean.TRUE);
+            try {
+                invokeExpandedText(args, composer);
+            } finally {
+                IN_EXPANDED_TEXT_SELECTION_CONTAINER.remove();
+            }
+        }
+    }
+
+    /**
+     * Invokes the original expanded text with the given arguments, but with the composer
+     * of the SelectionContainer content.
+     */
+    private static void invokeExpandedText(Object[] args, Object composer) {
+        // Modified during patching.
+    }
+
+    // endregion
+
     // region Disable collapsing comments.
 
     /**
