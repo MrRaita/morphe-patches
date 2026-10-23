@@ -64,7 +64,9 @@ public final class CopyTextPatch {
      */
     public static boolean shouldWrapRichText() {
         try {
-            return Settings.COPY_TEXT.get() && IN_SELECTION_CONTAINER.get() == null;
+            boolean wrap = Settings.COPY_TEXT.get() && IN_SELECTION_CONTAINER.get() == null;
+            CopyTextDebugLog.logLimited("richText", "shouldWrapRichText=" + wrap);
+            return wrap;
         } catch (Exception ex) {
             Logger.printException(() -> "shouldWrapRichText failure", ex);
             return false;
@@ -127,7 +129,11 @@ public final class CopyTextPatch {
      */
     public static boolean shouldWrapExpandedText() {
         try {
-            return Settings.COPY_TEXT.get() && IN_EXPANDED_TEXT_SELECTION_CONTAINER.get() == null;
+            boolean wrap = Settings.COPY_TEXT.get() && IN_EXPANDED_TEXT_SELECTION_CONTAINER.get() == null;
+            CopyTextDebugLog.logLimited("expandedText", "shouldWrapExpandedText=" + wrap
+                    + " setting=" + Settings.COPY_TEXT.get()
+                    + " inContainer=" + (IN_EXPANDED_TEXT_SELECTION_CONTAINER.get() != null));
+            return wrap;
         } catch (Exception ex) {
             Logger.printException(() -> "shouldWrapExpandedText failure", ex);
             return false;
@@ -158,6 +164,8 @@ public final class CopyTextPatch {
          */
         public void render(Object composer) {
             IN_EXPANDED_TEXT_SELECTION_CONTAINER.set(Boolean.TRUE);
+            CopyTextDebugLog.logLimited("expandedContent", "expanded text content render, text="
+                    + (args.length > 0 ? String.valueOf(args[0]).replace('\n', ' ') : "?"));
             try {
                 invokeExpandedText(args, composer);
             } finally {
@@ -232,6 +240,7 @@ public final class CopyTextPatch {
         if (!Settings.COPY_TEXT.get()) return;
 
         SELECTION_MANAGERS_WITH_SELECTION.remove(selectionManager);
+        CopyTextDebugLog.logStack("SELECTION RELEASED, remaining=" + SELECTION_MANAGERS_WITH_SELECTION.size(), 7);
     }
 
     /**
@@ -240,6 +249,7 @@ public final class CopyTextPatch {
     public static void onSelectionChanged(SelectionManagerInterface selectionManager, @Nullable Object selection) {
         if (!Settings.COPY_TEXT.get()) return;
 
+        CopyTextDebugLog.log("selection changed: " + selection + " manager=" + System.identityHashCode(selectionManager));
         if (selection == null) {
             SELECTION_MANAGERS_WITH_SELECTION.remove(selectionManager);
         } else {
@@ -263,7 +273,10 @@ public final class CopyTextPatch {
             }
 
             for (StackTraceElement frame : new Throwable().getStackTrace()) {
-                if ("dispatchTouchEvent".equals(frame.getMethodName())) return true;
+                if ("dispatchTouchEvent".equals(frame.getMethodName())) {
+                    CopyTextDebugLog.log("blocked focus clear caused by touch input");
+                    return true;
+                }
             }
         } catch (Exception ex) {
             Logger.printException(() -> "shouldBlockFocusClear failure", ex);
@@ -289,6 +302,8 @@ public final class CopyTextPatch {
 
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    CopyTextDebugLog.log("touch DOWN x=" + event.getRawX() + " y=" + event.getRawY()
+                            + " selections=" + SELECTION_MANAGERS_WITH_SELECTION.size());
                     tapCandidate = !SELECTION_MANAGERS_WITH_SELECTION.isEmpty();
                     touchDownX = event.getRawX();
                     touchDownY = event.getRawY();
@@ -307,6 +322,8 @@ public final class CopyTextPatch {
                     }
                     break;
                 case MotionEvent.ACTION_UP:
+                    CopyTextDebugLog.log("touch UP x=" + event.getRawX() + " y=" + event.getRawY()
+                            + " duration=" + (event.getEventTime() - touchDownTime) + "ms tapCandidate=" + tapCandidate);
                     if (tapCandidate
                             && event.getEventTime() - touchDownTime < ViewConfiguration.getLongPressTimeout()) {
                         releaseSelections();
@@ -319,6 +336,20 @@ public final class CopyTextPatch {
         } catch (Exception ex) {
             Logger.printException(() -> "onComposeTouchEvent failure", ex);
         }
+    }
+
+    /**
+     * Injection point (diagnostics). Called at the start of the media viewer ExpandableTitleAndBodyText.
+     */
+    public static void debugExpandableText(boolean expanded) {
+        CopyTextDebugLog.logLimited("ExpandableTitleAndBodyText", "expanded=" + expanded);
+    }
+
+    /**
+     * Injection point (diagnostics). Called at the start of the media viewer collapsed text.
+     */
+    public static void debugCollapsedText() {
+        CopyTextDebugLog.logLimited("CollapsedText", "called");
     }
 
     private static void releaseSelections() {

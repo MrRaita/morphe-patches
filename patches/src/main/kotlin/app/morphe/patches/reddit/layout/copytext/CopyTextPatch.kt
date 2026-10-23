@@ -279,6 +279,23 @@ val copyTextPatch = bytecodePatch(
 
         // endregion
 
+        // region Diagnostics: which media viewer text composables are used.
+
+        try {
+            ExpandableTitleAndBodyTextFingerprint.method.addInstruction(
+                0,
+                "invoke-static/range { p2 .. p2 }, $EXTENSION_CLASS->debugExpandableText(Z)V"
+            )
+            CollapsedTitleAndBodyTextFingerprint.method.addInstruction(
+                0,
+                "invoke-static { }, $EXTENSION_CLASS->debugCollapsedText()V"
+            )
+        } catch (e: PatchException) {
+            Logger.getLogger(this::class.java.name).warning("Diagnostics hooks not applied: ${e.message}")
+        }
+
+        // endregion
+
         // region Disable collapsing comments, expanding a collapsed comment keeps working.
 
         CommentClickEventHandlerFingerprint.let {

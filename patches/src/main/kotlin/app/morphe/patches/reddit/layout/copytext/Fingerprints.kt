@@ -202,3 +202,29 @@ internal object ComposeDispatchTouchEventFingerprint : Fingerprint(
     returnType = "Z",
     parameters = listOf("Landroid/view/MotionEvent;")
 )
+
+/**
+ * Media viewer ExpandableTitleAndBodyText. Only used for diagnostics.
+ */
+internal object ExpandableTitleAndBodyTextFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = listOf(
+        "Ljava/lang/String;", "I", "Z", "L", "L",
+        "Lcom/reddit/fullbleedplayer/composables/LabelVisibility;",
+        "Lkotlin/jvm/functions/Function1;", "L", "I", "I"
+    )
+)
+
+/**
+ * Media viewer collapsed title and body text. Only used for diagnostics.
+ */
+internal object CollapsedTitleAndBodyTextFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    returnType = "V",
+    parameters = listOf(
+        "Ljava/lang/String;", "I",
+        "Lcom/reddit/fullbleedplayer/composables/LabelVisibility;",
+        "L", "L", "Lkotlin/jvm/functions/Function1;", "L", "I"
+    )
+)
