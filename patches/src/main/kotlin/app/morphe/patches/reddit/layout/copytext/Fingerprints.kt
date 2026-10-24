@@ -228,3 +228,29 @@ internal object CollapsedTitleAndBodyTextFingerprint : Fingerprint(
         "L", "L", "Lkotlin/jvm/functions/Function1;", "L", "I"
     )
 )
+
+// Diagnostics only: Compose selection internals.
+
+internal object SelectionRegistrarSortFingerprint : Fingerprint(
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    returnType = "Ljava/util/ArrayList;",
+    parameters = listOf("L"),
+    custom = { _, classDef ->
+        classDef.fields.any { it.type == "Ljava/util/concurrent/atomic/AtomicLong;" }
+    }
+)
+
+internal object SelectionTouchModeGestureFingerprint : Fingerprint(
+    definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionGesturesKt$updateSelectionTouchMode$1$1;",
+    name = "invokeSuspend"
+)
+
+internal object SelectionFirstPressFingerprint : Fingerprint(
+    definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionGesturesKt$touchSelectionFirstPress$1;",
+    name = "invokeSuspend"
+)
+
+internal object SelectionSuggestLongPressFingerprint : Fingerprint(
+    definingClass = $$"Landroidx/compose/foundation/text/selection/SelectionManager$suggestSelectionForLongPressOrDoubleClick$2;",
+    name = "invokeSuspend"
+)

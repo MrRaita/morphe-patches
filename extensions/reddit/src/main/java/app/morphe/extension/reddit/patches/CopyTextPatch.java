@@ -308,8 +308,11 @@ public final class CopyTextPatch {
                     touchDownX = event.getRawX();
                     touchDownY = event.getRawY();
                     touchDownTime = event.getEventTime();
+                    debugMaxMove = 0;
                     break;
                 case MotionEvent.ACTION_MOVE:
+                    debugMaxMove = Math.max(debugMaxMove, Math.max(
+                            Math.abs(event.getRawX() - touchDownX), Math.abs(event.getRawY() - touchDownY)));
                     if (tapCandidate) {
                         if (tapSlop == 0) {
                             tapSlop = ViewConfiguration.get(Utils.getContext()).getScaledTouchSlop()
@@ -323,7 +326,8 @@ public final class CopyTextPatch {
                     break;
                 case MotionEvent.ACTION_UP:
                     CopyTextDebugLog.log("touch UP x=" + event.getRawX() + " y=" + event.getRawY()
-                            + " duration=" + (event.getEventTime() - touchDownTime) + "ms tapCandidate=" + tapCandidate);
+                            + " duration=" + (event.getEventTime() - touchDownTime) + "ms tapCandidate=" + tapCandidate
+                            + " maxMovePx=" + debugMaxMove);
                     if (tapCandidate
                             && event.getEventTime() - touchDownTime < ViewConfiguration.getLongPressTimeout()) {
                         releaseSelections();
@@ -350,6 +354,22 @@ public final class CopyTextPatch {
      */
     public static void debugCollapsedText() {
         CopyTextDebugLog.logLimited("CollapsedText", "called");
+    }
+
+    private static float debugMaxMove;
+
+    /**
+     * Injection point (diagnostics). Called at the start of Compose selection gesture code.
+     */
+    public static void debugProbe(String name) {
+        CopyTextDebugLog.logLimited(name, "invoked");
+    }
+
+    /**
+     * Injection point (diagnostics). Called with the selectables registered in a selection container.
+     */
+    public static void debugSelectables(java.util.ArrayList<?> selectables) {
+        CopyTextDebugLog.log("selectables registered in container: " + selectables.size());
     }
 
     private static void releaseSelections() {

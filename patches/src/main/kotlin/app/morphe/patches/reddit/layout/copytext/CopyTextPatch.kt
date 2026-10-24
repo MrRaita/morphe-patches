@@ -24,6 +24,7 @@ import app.morphe.util.findFreeRegister
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
@@ -292,6 +293,34 @@ val copyTextPatch = bytecodePatch(
             )
         } catch (e: PatchException) {
             Logger.getLogger(this::class.java.name).warning("Diagnostics hooks not applied: ${e.message}")
+        }
+
+        // Diagnostics of the Compose selection internals.
+        try {
+            listOf(
+                SelectionTouchModeGestureFingerprint to "selectionGestureInstalled",
+                SelectionFirstPressFingerprint to "touchSelectionFirstPress",
+                SelectionSuggestLongPressFingerprint to "suggestSelectionForLongPress"
+            ).forEach { (fingerprint, name) ->
+                fingerprint.method.addInstructions(
+                    0,
+                    """
+                        const-string v0, "$name"
+                        invoke-static { v0 }, $EXTENSION_CLASS->debugProbe(Ljava/lang/String;)V
+                    """
+                )
+            }
+
+            SelectionRegistrarSortFingerprint.method.apply {
+                val returnIndex = implementation!!.instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
+                val register = getInstruction<OneRegisterInstruction>(returnIndex).registerA
+                addInstruction(
+                    returnIndex,
+                    "invoke-static { v$register }, $EXTENSION_CLASS->debugSelectables(Ljava/util/ArrayList;)V"
+                )
+            }
+        } catch (e: PatchException) {
+            Logger.getLogger(this::class.java.name).warning("Selection diagnostics hooks not applied: ${e.message}")
         }
 
         // endregion
